@@ -116,11 +116,28 @@
             border-radius: 10px;
             margin-top: 20px;
             display: none;
+            text-align: left;
         }
         .results-title {
             color: #2ed573;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .result-row {
+            font-size: 0.9rem;
+            color: #f1f2f6;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .zone-dot {
+            height: 10px;
+            width: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
         }
         canvas { display: none; }
     </style>
@@ -149,9 +166,27 @@
 
     <div class="results-box" id="results-panel">
         <div class="results-title">✓ PRUEBA COMPLETADA</div>
-        <div style="font-size: 0.9rem; color: #f1f2f6;">
-            Tu promedio final fue de:<br>
-            <span style="font-size: 2rem; font-weight: bold; color: #2ed573;" id="avg-val">--</span> BPM
+        <div class="result-row">
+            <span>Promedio final:</span>
+            <strong><span id="avg-val">--</span> BPM</strong>
+        </div>
+        <div class="result-row">
+            <span>Moda (frecuente):</span>
+            <strong><span id="mode-val">--</span> BPM</strong>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #57606f; margin: 10px 0;">
+        <div style="font-size: 0.85rem; color: #a4b0be; margin-bottom: 5px; font-weight: bold;">Zonas de Trabajo:</div>
+        <div class="result-row">
+            <span><span class="zone-dot" style="background-color: #2ed573;"></span> Verde (&lt; 70 PPM):</span>
+            <strong id="zone-green">0%</strong>
+        </div>
+        <div class="result-row">
+            <span><span class="zone-dot" style="background-color: #ffa502;"></span> Amarillo (71-100):</span>
+            <strong id="zone-yellow">0%</strong>
+        </div>
+        <div class="result-row">
+            <span><span class="zone-dot" style="background-color: #ff4757;"></span> Rojo (&gt; 100 PPM):</span>
+            <strong id="zone-red">0%</strong>
         </div>
     </div>
 </div>
@@ -169,6 +204,10 @@
     const progressBar = document.getElementById('p-bar');
     const resultsPanel = document.getElementById('results-panel');
     const avgVal = document.getElementById('avg-val');
+    const modeVal = document.getElementById('mode-val');
+    const zoneGreen = document.getElementById('zone-green');
+    const zoneYellow = document.getElementById('zone-yellow');
+    const zoneRed = document.getElementById('zone-red');
 
     let stream = null;
     let track = null;
@@ -178,7 +217,7 @@
     
     let rValues = [];
     let times = [];
-    let allValidBpms = []; // Para sacar el promedio final
+    let allValidBpms = []; 
     const maxDataPoints = 120; 
     let lastBpm = 0;
     let timeLeft = 60;
@@ -209,7 +248,6 @@
             video.srcObject = stream;
             track = stream.getVideoTracks()[0];
 
-            // Intento de flash por si acaso
             setTimeout(async () => {
                 try { await track.applyConstraints({ advanced: [{ torch: true }] }); } catch (e) {}
             }, 1000);
@@ -223,14 +261,13 @@
             
             frameInterval = setInterval(processFrame, 1000 / 30);
             
-            // Lógica del Reloj de 1 minuto
             countdownInterval = setInterval(() => {
                 timeLeft--;
                 timerTxt.textContent = `Tiempo restante: ${timeLeft}s`;
                 progressBar.style.width = `${((60 - timeLeft) / 60) * 100}%`;
 
                 if (timeLeft <= 0) {
-                    stopMeasurement(true); // Terminado con éxito
+                    stopMeasurement(true);
                 }
             }, 1000);
 
@@ -257,9 +294,44 @@
         if (isCompleted) {
             statusText.textContent = "Ejercicio finalizado con éxito.";
             if (allValidBpms.length > 0) {
+                // Promedio
                 const sum = allValidBpms.reduce((a, b) => a + b, 0);
                 const avg = Math.round(sum / allValidBpms.length);
                 avgVal.textContent = avg;
+
+                // Moda
+                const frequency = {};
+                let maxFreq = 0;
+                let mode = allValidBpms[0];
+                allValidBpms.forEach(bpm => {
+                    frequency[bpm] = (frequency[bpm] || 0) + 1;
+                    if (frequency[bpm] > maxFreq) {
+                        maxFreq = frequency[bpm];
+                        mode = bpm;
+                    }
+                });
+                modeVal.textContent = mode;
+
+                // Semáforo de zonas de trabajo
+                let greenCount = 0;
+                let yellowCount = 0;
+                let redCount = 0;
+
+                allValidBpms.forEach(bpm => {
+                    if (bpm < 70) {
+                        greenCount++;
+                    } else if (bpm >= 71 && bpm <= 100) {
+                        yellowCount++;
+                    } else {
+                        redCount++; // > 100 PPM
+                    }
+                });
+
+                const total = allValidBpms.length;
+                zoneGreen.textContent = `${Math.round((greenCount / total) * 100)}%`;
+                zoneYellow.textContent = `${Math.round((yellowCount / total) * 100)}%`;
+                zoneRed.textContent = `${Math.round((redCount / total) * 100)}%`;
+
                 resultsPanel.style.display = "block";
             } else {
                 statusText.textContent = "Prueba terminada, pero no se captaron suficientes datos estables. Inténtalo de nuevo presionando mejor el lente.";
@@ -299,7 +371,6 @@
         let peaks = [];
         let smoothValues = [];
         
-        // Suavizado incrementado para amortiguar la falta de flash
         for (let i = 3; i < rValues.length - 3; i++) {
             let val = (rValues[i-3] + rValues[i-2] + rValues[i-1] + rValues[i] + rValues[i+1] + rValues[i+2] + rValues[i+3]) / 7;
             smoothValues.push({val: val, time: times[i]});
@@ -320,15 +391,13 @@
             const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
             let bpm = Math.round(60000 / avgInterval);
 
-            // Filtro estricto para evitar saltos locos sin flash (rango normal)
             if (bpm >= 50 && bpm <= 150) {
                 if (lastBpm === 0) lastBpm = bpm;
                 
-                // Amortiguación fuerte: el valor nuevo solo cambia un 10% del mostrado
                 lastBpm = Math.round(lastBpm * 0.9 + bpm * 0.1);
                 
                 bpmVal.textContent = lastBpm;
-                allValidBpms.push(lastBpm); // Guardando para el promedio final
+                allValidBpms.push(lastBpm); 
                 statusText.textContent = "Mantén el dedo bien quieto frente a una luz estable...";
             }
         }

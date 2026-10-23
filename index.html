@@ -78,7 +78,6 @@
             color: #ff4757;
             margin: 10px 0;
             line-height: 1;
-            transition: color 0.3s ease;
         }
         .bpm-unit {
             font-size: 1rem;
@@ -219,9 +218,8 @@
     let rValues = [];
     let times = [];
     let allValidBpms = []; 
-    let bpmBuffer = []; // Buffer para filtro de suavizado estilo oxímetro
     const maxDataPoints = 120; 
-    let smoothedBpm = 0;
+    let lastBpm = 0;
     let timeLeft = 60;
 
     startBtn.addEventListener('click', async () => {
@@ -234,7 +232,6 @@
         resultsPanel.style.display = "none";
         statusText.textContent = "Abriendo cámara...";
         allValidBpms = [];
-        bpmBuffer = [];
         timeLeft = 60;
         timerTxt.textContent = `Tiempo restante: ${timeLeft}s`;
         progressBar.style.width = "0%";
@@ -260,7 +257,7 @@
             isRunning = true;
             rValues = [];
             times = [];
-            smoothedBpm = 0;
+            lastBpm = 0;
             
             frameInterval = setInterval(processFrame, 1000 / 30);
             
@@ -297,7 +294,7 @@
         if (isCompleted) {
             statusText.textContent = "Ejercicio finalizado con éxito.";
             if (allValidBpms.length > 0) {
-                // Promedio final
+                // Promedio
                 const sum = allValidBpms.reduce((a, b) => a + b, 0);
                 const avg = Math.round(sum / allValidBpms.length);
                 avgVal.textContent = avg;
@@ -392,37 +389,16 @@
             }
             
             const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-            let rawBpm = Math.round(60000 / avgInterval);
+            let bpm = Math.round(60000 / avgInterval);
 
-            // Filtro de rango biológico básico
-            if (rawBpm >= 45 && rawBpm <= 160) {
+            if (bpm >= 50 && bpm <= 150) {
+                if (lastBpm === 0) lastBpm = bpm;
                 
-                // 1. Filtro de rechazo de artefactos (Outlier Rejection)
-                if (smoothedBpm > 0 && Math.abs(rawBpm - smoothedBpm) > 12) {
-                    // Si el cambio instantáneo es mayor a 12 PPM (ruido/movimiento), se amortigua fuertemente
-                    rawBpm = Math.round(smoothedBpm + (rawBpm - smoothedBpm) * 0.15);
-                }
-
-                // 2. Buffer de promediado móvil (estilo oxímetro)
-                bpmBuffer.push(rawBpm);
-                if (bpmBuffer.length > 5) {
-                    bpmBuffer.shift(); // Mantener últimas 5 lecturas
-                }
-
-                const bufferSum = bpmBuffer.reduce((a, b) => a + b, 0);
-                const targetBpm = Math.round(bufferSum / bpmBuffer.length);
-
-                // 3. Suavizado de transición gradual
-                if (smoothedBpm === 0) {
-                    smoothedBpm = targetBpm;
-                } else {
-                    // Transición progresiva muy suave (0.95 / 0.05)
-                    smoothedBpm = Math.round(smoothedBpm * 0.95 + targetBpm * 0.05);
-                }
+                lastBpm = Math.round(lastBpm * 0.9 + bpm * 0.1);
                 
-                bpmVal.textContent = smoothedBpm;
-                allValidBpms.push(smoothedBpm); 
-                statusText.textContent = "Lectura estable. Mantén la presión del dedo suave y constante.";
+                bpmVal.textContent = lastBpm;
+                allValidBpms.push(lastBpm); 
+                statusText.textContent = "Mantén el dedo bien quieto frente a una luz estable...";
             }
         }
     }
